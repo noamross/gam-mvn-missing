@@ -126,7 +126,9 @@ frms <- lapply(seq_along(yvars), function(i) {
     as.formula()
 })
 
-# Create formulas for the full model without missing data
+frms
+
+# Create formulas for the full model without missing data or index terms
 frms_full <- lapply(seq_along(yvars), function(i) {
   paste0(yvars[i], " ~ 0 + ", paste0("s(", xvars, ", k = 4)", collapse = " + ")) |>
     as.formula()
@@ -161,6 +163,11 @@ plot(mod_miss, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
 #' and for the rows with missing data, the zero-intercept model is very good at
 #' estimating a zero value!
 #'
+#' But the terms with `by=` seem to have variances estimated as if the had all
+#' the values, rather than the few non-missing values. Is there a way to let the
+#' smooth know that it's `n` value is 30 rather than 300?  This seems like it might
+#' be able to be done by modifying the penalty matrix somehow.
+#'
 #' One option for getting around this could be, instead of replacing the missing
 #' values with zeros, replacing them with random values with the same variance
 #' as the non-missing values.  However, this would change the covariance between
@@ -170,5 +177,10 @@ plot(mod_miss, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
 #' doing `cov(..., "pairwise.complete.obs")` on the response residuals.  The
 #' model estimates would still be different, though, and I'm not sure _how_ they
 #' would be different.
+#'
+#' The other problem, that I've not yet addressed: What if I have a shared term
+#' across variables such as `1 + 2 + 3 ~ 0 + s(x4) + s(x5)` in the model.  The best
+#' idea I can come up with is to make several terms, each representing a condition
+#' where different combinations of variables are missing, and then sum them up.
 
 

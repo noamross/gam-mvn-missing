@@ -133,7 +133,23 @@ frms <- lapply(seq_along(yvars), function(i) {
     as.formula()
 })
 
-# Create formulas for the full model without missing data
+frms
+```
+
+    ## [[1]]
+    ## y1 ~ 0 + s(x1, by = id_y1, k = 4) + s(x2, by = id_y1, k = 4)
+    ## <environment: 0x7fe9f9858fc8>
+    ## 
+    ## [[2]]
+    ## y2 ~ 0 + s(x1, by = id_y2, k = 4) + s(x2, by = id_y2, k = 4)
+    ## <environment: 0x7fe9f9861c08>
+    ## 
+    ## [[3]]
+    ## y3 ~ 0 + s(x1, by = id_y3, k = 4) + s(x2, by = id_y3, k = 4)
+    ## <environment: 0x7fe9f84a3db8>
+
+``` r
+# Create formulas for the full model without missing data or index terms
 frms_full <- lapply(seq_along(yvars), function(i) {
   paste0(yvars[i], " ~ 0 + ", paste0("s(", xvars, ", k = 4)", collapse = " + ")) |>
     as.formula()
@@ -177,6 +193,12 @@ I assume this is because in the current model the missing values are
 zero and for the rows with missing data, the zero-intercept model is
 very good at estimating a zero value!
 
+But the terms with `by=` seem to have variances estimated as if the had
+all the values, rather than the few non-missing values. Is there a way
+to let the smooth know that it’s `n` value is 30 rather than 300? This
+seems like it might be able to be done by modifying the penalty matrix
+somehow.
+
 One option for getting around this could be, instead of replacing the
 missing values with zeros, replacing them with random values with the
 same variance as the non-missing values. However, this would change the
@@ -187,3 +209,9 @@ calculate the covariance between the outcomes by doing
 `cov(..., "pairwise.complete.obs")` on the response residuals. The model
 estimates would still be different, though, and I’m not sure *how* they
 would be different.
+
+The other problem, that I’ve not yet addressed: What if I have a shared
+term across variables such as `1 + 2 + 3 ~ 0 + s(x4) + s(x5)` in the
+model. The best idea I can come up with is to make several terms, each
+representing a condition where different combinations of variables are
+missing, and then sum them up.
