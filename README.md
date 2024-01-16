@@ -1,6 +1,6 @@
 Fitting multivariate outcome GAMs with missing outcome data
 ================
-noamross
+Noam Ross
 2024-01-16
 
 OK, I want to fit a model that has multiple continuous, correlated
@@ -181,9 +181,9 @@ One option for getting around this could be, instead of replacing the
 missing values with zeros, replacing them with random values with the
 same variance as the non-missing values. However, this would change the
 covariance between the outcomes the model would estimate. (To be fair, I
-might be doing this already by replacing them with zeros.).
-
-OK, we can try the ?`gam.missing` approach and add latent random
-effects, though it does make this much more computationally intense and
-unglier as we need a random effects dummy term for *each* outcome in
-*each* formula.
+might be doing this already by replacing them with zeros.). I’m
+interested in the covariance as an outcome, In theory I could also
+calculate the covariance between the outcomes by doing
+`cov(..., "pairwise.complete.obs")` on the response residuals. The model
+estimates would still be different, though, and I’m not sure *how* they
+would be different.

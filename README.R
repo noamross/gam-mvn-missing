@@ -1,5 +1,7 @@
 #' ---
 #' title: "Fitting multivariate outcome GAMs with missing outcome data"
+#' author: "Noam Ross"
+#' date: "`r Sys.Date()`"
 #' output: github_document
 #' ---
 
@@ -163,8 +165,10 @@ plot(mod_miss, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
 #' values with zeros, replacing them with random values with the same variance
 #' as the non-missing values.  However, this would change the covariance between
 #' the outcomes the model would estimate. (To be fair, I might be doing this already
-#' by replacing them with zeros.).
-#'
-#' OK, we can try the ?`gam.missing` approach and add latent random effects, though
-#' it does make this much more computationally intense and unglier as we need a random effects dummy term for _each_ outcome in _each_ formula.
+#' by replacing them with zeros.). I'm interested in the covariance as an outcome,
+#' In theory I could also calculate the covariance between the outcomes by
+#' doing `cov(..., "pairwise.complete.obs")` on the response residuals.  The
+#' model estimates would still be different, though, and I'm not sure _how_ they
+#' would be different.
+
 
