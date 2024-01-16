@@ -90,7 +90,7 @@ generate_cov_matrix <- function(dim, scale = 1) {
 }
 #' </details>
 
-data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 10, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
+data <- simulate_mvn_missing(n = 1000, miss = c(0,0,0.9), seed = 13, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
 
 #' OK, first strategy.  Following the approach in `?mgcv::missing.data`, we
 #' create new index variables that indicate whether the outcome is missing as
@@ -183,4 +183,69 @@ plot(mod_miss, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
 #' idea I can come up with is to make several terms, each representing a condition
 #' where different combinations of variables are missing, and then sum them up.
 
+#' OK, let's try the random values approach
+data_missing_rand <- data
+for (i in seq_along(yvars)) {
+  yvar <- yvars[i]
+  idvar <- paste0("id_", yvar)
+  idvars[i] <- idvar
+  # Center the outcome variables so we don't deal with intercepts, save the means
+  ymeans[i] <- mean(data_missing_rand[[yvar]], na.rm = TRUE)
+  data_missing_rand[[yvar]] <- data_missing_rand[[yvar]] - ymeans[i]
+  # Create indicate variables (id_*)as to whether to include an observation, as ordered factors
+  # with 0 being missing and 1 being present
+  data_missing_rand[[idvar]] <- ordered(ifelse(is.na(data_missing_rand[[yvar]]), 0, 1), levels = c("0", "1"))
+  # Set missing values to zero
+  data_missing_rand[[yvar]][is.na(data_missing_rand[[yvar]])] <- rnorm(sum(is.na(data_missing_rand[[yvar]])), mean = 0, sd = sd(data_missing_rand[[yvar]], na.rm = TRUE))
+}
+
+mod_miss_random <- mgcv::gam(
+  frms,
+  family = mgcv::mvn(d = length(yvars)),
+  data = data_missing_rand,
+  method = "REML"
+)
+plot(mod_full, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
+plot(mod_miss_random, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
+
+#' OK, the random value approach does give us more appropriate uncertainty for
+#' the specific smooth terms.  What are the consequences?  Let's look at the
+#' covariance matrix:
+(V_true <- attr(data, "true_V"))
+(V_full <- solve(crossprod(mod_full$family$data$R)))
+(V_miss <- solve(crossprod(mod_miss$family$data$R)))
+(V_miss_random <- solve(crossprod(mod_miss_random$family$data$R)))
+
+#' The missing data approach underestimates both varaince and co-variance
+#'
+#' I'm a bit confused here.  Why does `mod_full` overestimate the variance of the lower-right square? It has the real data.
+#'
+#' Let's look at the covariance if we estimate it from the residuals
+(V_full_res <- cov(residuals(mod_full, type = "response"))) # quite similar V_full, as expected
+
+#' For the missing data cases we estimate the covaraince pairwise only from the non-missing residuals
+
+# Discard the zero or randomly inserted values for the Y response
+res_miss <- residuals(mod_miss, type = "response")
+res_miss[is.na(as.matrix(data_missing[yvars]))] <- NA
+(V_miss_res <- cov(residuals(mod_miss, type = "response"), use = "pairwise.complete.obs")) # Same as V_miss
+
+res_miss_random <- residuals(mod_miss_random, type = "response")
+res_miss_random[is.na(as.matrix(data_missing[yvars]))] <- NA
+(V_miss_random_res <- cov(residuals(mod_miss_random, type = "response"), use = "pairwise.complete.obs")) # Same a V_miss_random
+
+#' These also turn out the same as the estimated value from the model. The random data approach
+#' underestimates variance/covariance less than the zeroes-for-missing-data approach relative
+#' to the full model (which itself overestimates the true data).  Though looking at correlation rather
+#' than covariance shows it's not quite as intuitive.  Since the zeros approach underestimates the overall variance
+#' it estimates higher correlation than the random data approach, and both are underestimates:
+cov2cor(V_true)
+cov2cor(V_full)
+cov2cor(V_miss)
+cov2cor(V_miss_random)
+#' Anectodotally, the general patterns above are consistent across different random seeds.
+#'
+#' Crap, am I going to have to fit all those latent random effects as in `?mgcv::missing.data`?
+#' That's both ugly and computationally intense, as I'll need to fit a random term for each output in each formula, and that will blow up in the real model that has
+#' both more outcomes and more parameters.
 

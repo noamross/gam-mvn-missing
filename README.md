@@ -94,7 +94,7 @@ generate_cov_matrix <- function(dim, scale = 1) {
 </details>
 
 ``` r
-data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 10, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
+data <- simulate_mvn_missing(n = 1000, miss = c(0,0,0.9), seed = 13, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
 ```
 
 OK, first strategy. Following the approach in `?mgcv::missing.data`, we
@@ -138,15 +138,15 @@ frms
 
     ## [[1]]
     ## y1 ~ 0 + s(x1, by = id_y1, k = 4) + s(x2, by = id_y1, k = 4)
-    ## <environment: 0x7fe9f9858fc8>
+    ## <environment: 0x7fac260b4ba8>
     ## 
     ## [[2]]
     ## y2 ~ 0 + s(x1, by = id_y2, k = 4) + s(x2, by = id_y2, k = 4)
-    ## <environment: 0x7fe9f9861c08>
+    ## <environment: 0x7fac260bd7b0>
     ## 
     ## [[3]]
     ## y3 ~ 0 + s(x1, by = id_y3, k = 4) + s(x2, by = id_y3, k = 4)
-    ## <environment: 0x7fe9f84a3db8>
+    ## <environment: 0x7fac44e318e8>
 
 ``` r
 # Create formulas for the full model without missing data or index terms
@@ -214,4 +214,172 @@ The other problem, that I’ve not yet addressed: What if I have a shared
 term across variables such as `1 + 2 + 3 ~ 0 + s(x4) + s(x5)` in the
 model. The best idea I can come up with is to make several terms, each
 representing a condition where different combinations of variables are
-missing, and then sum them up.
+missing, and then sum them up. OK, let’s try the random values approach
+
+``` r
+data_missing_rand <- data
+for (i in seq_along(yvars)) {
+  yvar <- yvars[i]
+  idvar <- paste0("id_", yvar)
+  idvars[i] <- idvar
+  # Center the outcome variables so we don't deal with intercepts, save the means
+  ymeans[i] <- mean(data_missing_rand[[yvar]], na.rm = TRUE)
+  data_missing_rand[[yvar]] <- data_missing_rand[[yvar]] - ymeans[i]
+  # Create indicate variables (id_*)as to whether to include an observation, as ordered factors
+  # with 0 being missing and 1 being present
+  data_missing_rand[[idvar]] <- ordered(ifelse(is.na(data_missing_rand[[yvar]]), 0, 1), levels = c("0", "1"))
+  # Set missing values to zero
+  data_missing_rand[[yvar]][is.na(data_missing_rand[[yvar]])] <- rnorm(sum(is.na(data_missing_rand[[yvar]])), mean = 0, sd = sd(data_missing_rand[[yvar]], na.rm = TRUE))
+}
+
+mod_miss_random <- mgcv::gam(
+  frms,
+  family = mgcv::mvn(d = length(yvars)),
+  data = data_missing_rand,
+  method = "REML"
+)
+plot(mod_full, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
+```
+
+![](README_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+``` r
+plot(mod_miss_random, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
+```
+
+![](README_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
+
+OK, the random value approach does give us more appropriate uncertainty
+for the specific smooth terms. What are the consequences? Let’s look at
+the covariance matrix:
+
+``` r
+(V_true <- attr(data, "true_V"))
+```
+
+    ##      [,1] [,2] [,3]
+    ## [1,]    1    2    2
+    ## [2,]    2    1    2
+    ## [3,]    2    2    1
+
+``` r
+(V_full <- solve(crossprod(mod_full$family$data$R)))
+```
+
+    ##           [,1]     [,2]     [,3]
+    ## [1,] 0.9474711 1.890342 1.887279
+    ## [2,] 1.8903417 3.797058 3.758519
+    ## [3,] 1.8872794 3.758519 3.799153
+
+``` r
+(V_miss <- solve(crossprod(mod_miss$family$data$R)))
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 0.9470419 1.8894829 0.1821631
+    ## [2,] 1.8894829 3.7953391 0.3634101
+    ## [3,] 0.1821631 0.3634101 0.3631744
+
+``` r
+(V_miss_random <- solve(crossprod(mod_miss_random$family$data$R)))
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 0.9468754 1.8891515 0.2197479
+    ## [2,] 1.8891515 3.7946793 0.4341205
+    ## [3,] 0.2197479 0.4341205 3.8930326
+
+The missing data approach underestimates both varaince and co-variance
+
+I’m a bit confused here. Why does `mod_full` overestimate the variance
+of the lower-right square? It has the real data.
+
+Let’s look at the covariance if we estimate it from the residuals
+
+``` r
+(V_full_res <- cov(residuals(mod_full, type = "response"))) # quite similar V_full, as expected
+```
+
+    ##           [,1]     [,2]     [,3]
+    ## [1,] 0.9484195 1.892234 1.889169
+    ## [2,] 1.8922340 3.800858 3.762282
+    ## [3,] 1.8891686 3.762282 3.774403
+
+For the missing data cases we estimate the covaraince pairwise only from
+the non-missing residuals
+
+``` r
+# Discard the zero or randomly inserted values for the Y response
+res_miss <- residuals(mod_miss, type = "response")
+res_miss[is.na(as.matrix(data_missing[yvars]))] <- NA
+(V_miss_res <- cov(residuals(mod_miss, type = "response"), use = "pairwise.complete.obs")) # Same as V_miss
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 0.9479899 1.8913743 0.1823455
+    ## [2,] 1.8913743 3.7991382 0.3637739
+    ## [3,] 0.1823455 0.3637739 0.3631835
+
+``` r
+res_miss_random <- residuals(mod_miss_random, type = "response")
+res_miss_random[is.na(as.matrix(data_missing[yvars]))] <- NA
+(V_miss_random_res <- cov(residuals(mod_miss_random, type = "response"), use = "pairwise.complete.obs")) # Same a V_miss_random
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 0.9478232 1.8910425 0.2199679
+    ## [2,] 1.8910425 3.7984778 0.4345551
+    ## [3,] 0.2199679 0.4345551 3.8968594
+
+These also turn out the same as the estimated value from the model. The
+random data approach underestimates variance/covariance less than the
+zeroes-for-missing-data approach relative to the full model (which
+itself overestimates the true data). Though looking at correlation
+rather than covariance shows it’s not quite as intuitive. Since the
+zeros approach underestimates the overall variance it estimates higher
+correlation than the random data approach, and both are underestimates:
+
+``` r
+cov2cor(V_true)
+```
+
+    ##      [,1] [,2] [,3]
+    ## [1,]    1    2    2
+    ## [2,]    2    1    2
+    ## [3,]    2    2    1
+
+``` r
+cov2cor(V_full)
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 1.0000000 0.9966295 0.9947406
+    ## [2,] 0.9966295 1.0000000 0.9895776
+    ## [3,] 0.9947406 0.9895776 1.0000000
+
+``` r
+cov2cor(V_miss)
+```
+
+    ##          [,1]      [,2]      [,3]
+    ## [1,] 1.000000 0.9966280 0.3106120
+    ## [2,] 0.996628 1.0000000 0.3095381
+    ## [3,] 0.310612 0.3095381 1.0000000
+
+``` r
+cov2cor(V_miss_random)
+```
+
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 1.0000000 0.9966274 0.1144549
+    ## [2,] 0.9966274 1.0000000 0.1129481
+    ## [3,] 0.1144549 0.1129481 1.0000000
+
+Anectodotally, the general patterns above are consistent across
+different random seeds.
+
+Crap, am I going to have to fit all those latent random effects as in
+`?mgcv::missing.data`? That’s both ugly and computationally intense, as
+I’ll need to fit a random term for each output in each formula, and that
+will blow up in the real model that has both more outcomes and more
+parameters.
