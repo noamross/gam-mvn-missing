@@ -98,10 +98,9 @@ data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 10, V = matrix(c
 ```
 
 OK, first strategy. Following the approach in `?mgcv::missing.data`, we
-creadate new index variables that indicate whether the outcome is
-missing as an ordered factor, and use `by=` in smooth terms. In this
-case I also cetner the outcome variables so we don’t have to deal with
-intercepts.
+create new index variables that indicate whether the outcome is missing
+as an ordered factor, and use `by=` in smooth terms. In this case I also
+center the outcome variables so we don’t have to deal with intercepts.
 
 ``` r
 xvars <- c("x1", "x2")

@@ -91,9 +91,9 @@ generate_cov_matrix <- function(dim, scale = 1) {
 data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 10, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
 
 #' OK, first strategy.  Following the approach in `?mgcv::missing.data`, we
-#' creadate new index variables that indicate whether the outcome is missing as
+#' create new index variables that indicate whether the outcome is missing as
 #' an ordered factor, and use `by=` in smooth terms.  In this case I also
-#' cetner the outcome variables so we don't have to deal with intercepts.
+#' center the outcome variables so we don't have to deal with intercepts.
 xvars <- c("x1", "x2")
 yvars = c("y1", "y2", "y3")
 data_missing <- data  # The data we'll fit
