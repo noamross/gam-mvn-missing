@@ -90,7 +90,10 @@ generate_cov_matrix <- function(dim, scale = 1) {
 }
 #' </details>
 
-data <- simulate_mvn_missing(n = 1000, miss = c(0,0,0.9), seed = 13, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
+set.seed(0)
+V <- matrix(1 + rnorm(9,sd = 0.1), 3) + diag(3)*0.5
+V[lower.tri(V)] <- V[t(lower.tri(V))]
+data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 13, V = V)
 
 #' OK, first strategy.  Following the approach in `?mgcv::missing.data`, we
 #' create new index variables that indicate whether the outcome is missing as
@@ -216,12 +219,11 @@ plot(mod_miss_random, pages = 1, shade = TRUE, ylim = c(-3, 3), xlim = c(0, 1))
 (V_miss <- solve(crossprod(mod_miss$family$data$R)))
 (V_miss_random <- solve(crossprod(mod_miss_random$family$data$R)))
 
-#' The missing data approach underestimates both varaince and co-variance
-#'
-#' I'm a bit confused here.  Why does `mod_full` overestimate the variance of the lower-right square? It has the real data.
-#'
+#' The missing data approach underestimates both varince and co-variance.
+#' This missing data with random approach underestimates only the covariance.
+
 #' Let's look at the covariance if we estimate it from the residuals
-(V_full_res <- cov(residuals(mod_full, type = "response"))) # quite similar V_full, as expected
+(V_full_res <- cov(residuals(mod_full, type = "response"))) # Same as V_full, as expected
 
 #' For the missing data cases we estimate the covaraince pairwise only from the non-missing residuals
 
@@ -242,10 +244,12 @@ res_miss_random[is.na(as.matrix(data_missing[yvars]))] <- NA
 cov2cor(V_true)
 cov2cor(V_full)
 cov2cor(V_miss)
-cov2cor(V_miss_random)
+cov2cor(V_miss_random) # Way underestimates correlation
 #' Anectodotally, the general patterns above are consistent across different random seeds.
 #'
+#'
 #' Crap, am I going to have to fit all those latent random effects as in `?mgcv::missing.data`?
-#' That's both ugly and computationally intense, as I'll need to fit a random term for each output in each formula, and that will blow up in the real model that has
+#' That's both ugly and computationally intense, as I'll need to fit a random effects
+#' term for each output in each formula each with all those effect levels, and that will blow up in the real model that has
 #' both more outcomes and more parameters.
 

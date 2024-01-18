@@ -1,7 +1,7 @@
 Fitting multivariate outcome GAMs with missing outcome data
 ================
 Noam Ross
-2024-01-16
+2024-01-18
 
 OK, I want to fit a model that has multiple continuous, correlated
 outcomes as a multivariate normal using `mgcv::mvn`. However, data from
@@ -94,7 +94,10 @@ generate_cov_matrix <- function(dim, scale = 1) {
 </details>
 
 ``` r
-data <- simulate_mvn_missing(n = 1000, miss = c(0,0,0.9), seed = 13, V = matrix(c(1,2,2,2,1,2,2,2,1), 3))
+set.seed(0)
+V <- matrix(1 + rnorm(9,sd = 0.1), 3) + diag(3)*0.5
+V[lower.tri(V)] <- V[t(lower.tri(V))]
+data <- simulate_mvn_missing(n = 300, miss = c(0,0,0.9), seed = 13, V = V)
 ```
 
 OK, first strategy. Following the approach in `?mgcv::missing.data`, we
@@ -138,15 +141,15 @@ frms
 
     ## [[1]]
     ## y1 ~ 0 + s(x1, by = id_y1, k = 4) + s(x2, by = id_y1, k = 4)
-    ## <environment: 0x7fac260b4ba8>
+    ## <environment: 0x7fe2972d5498>
     ## 
     ## [[2]]
     ## y2 ~ 0 + s(x1, by = id_y2, k = 4) + s(x2, by = id_y2, k = 4)
-    ## <environment: 0x7fac260bd7b0>
+    ## <environment: 0x7fe2972e01b8>
     ## 
     ## [[3]]
     ## y3 ~ 0 + s(x1, by = id_y3, k = 4) + s(x2, by = id_y3, k = 4)
-    ## <environment: 0x7fac44e318e8>
+    ## <environment: 0x7fe2956c7978>
 
 ``` r
 # Create formulas for the full model without missing data or index terms
@@ -257,53 +260,51 @@ the covariance matrix:
 (V_true <- attr(data, "true_V"))
 ```
 
-    ##      [,1] [,2] [,3]
-    ## [1,]    1    2    2
-    ## [2,]    2    1    2
-    ## [3,]    2    2    1
+    ##           [,1]     [,2]      [,3]
+    ## [1,] 1.6262954 1.127243 0.9071433
+    ## [2,] 1.1272429 1.541464 0.9705280
+    ## [3,] 0.9071433 0.970528 1.4994233
 
 ``` r
 (V_full <- solve(crossprod(mod_full$family$data$R)))
 ```
 
-    ##           [,1]     [,2]     [,3]
-    ## [1,] 0.9474711 1.890342 1.887279
-    ## [2,] 1.8903417 3.797058 3.758519
-    ## [3,] 1.8872794 3.758519 3.799153
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 1.5294827 0.9250831 0.8932648
+    ## [2,] 0.9250831 1.4173779 0.8996986
+    ## [3,] 0.8932648 0.8996986 1.5900505
 
 ``` r
 (V_miss <- solve(crossprod(mod_miss$family$data$R)))
 ```
 
-    ##           [,1]      [,2]      [,3]
-    ## [1,] 0.9470419 1.8894829 0.1821631
-    ## [2,] 1.8894829 3.7953391 0.3634101
-    ## [3,] 0.1821631 0.3634101 0.3631744
+    ##            [,1]       [,2]       [,3]
+    ## [1,] 1.57845050 0.95521788 0.05894369
+    ## [2,] 0.95521788 1.43520526 0.04660502
+    ## [3,] 0.05894369 0.04660502 0.09346221
 
 ``` r
 (V_miss_random <- solve(crossprod(mod_miss_random$family$data$R)))
 ```
 
-    ##           [,1]      [,2]      [,3]
-    ## [1,] 0.9468754 1.8891515 0.2197479
-    ## [2,] 1.8891515 3.7946793 0.4341205
-    ## [3,] 0.2197479 0.4341205 3.8930326
+    ##           [,1]       [,2]       [,3]
+    ## [1,] 1.5347552 0.92767526 0.18493357
+    ## [2,] 0.9276753 1.41796461 0.07082077
+    ## [3,] 0.1849336 0.07082077 1.57273981
 
-The missing data approach underestimates both varaince and co-variance
-
-I’m a bit confused here. Why does `mod_full` overestimate the variance
-of the lower-right square? It has the real data.
-
-Let’s look at the covariance if we estimate it from the residuals
+The missing data approach underestimates both varince and co-variance.
+This missing data with random approach underestimates only the
+covariance. Let’s look at the covariance if we estimate it from the
+residuals
 
 ``` r
-(V_full_res <- cov(residuals(mod_full, type = "response"))) # quite similar V_full, as expected
+(V_full_res <- cov(residuals(mod_full, type = "response"))) # Same as V_full, as expected
 ```
 
-    ##           [,1]     [,2]     [,3]
-    ## [1,] 0.9484195 1.892234 1.889169
-    ## [2,] 1.8922340 3.800858 3.762282
-    ## [3,] 1.8891686 3.762282 3.774403
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 1.5345981 0.9281770 0.8962523
+    ## [2,] 0.9281770 1.4221183 0.9027077
+    ## [3,] 0.8962523 0.9027077 1.4939191
 
 For the missing data cases we estimate the covaraince pairwise only from
 the non-missing residuals
@@ -315,10 +316,10 @@ res_miss[is.na(as.matrix(data_missing[yvars]))] <- NA
 (V_miss_res <- cov(residuals(mod_miss, type = "response"), use = "pairwise.complete.obs")) # Same as V_miss
 ```
 
-    ##           [,1]      [,2]      [,3]
-    ## [1,] 0.9479899 1.8913743 0.1823455
-    ## [2,] 1.8913743 3.7991382 0.3637739
-    ## [3,] 0.1823455 0.3637739 0.3631835
+    ##            [,1]       [,2]       [,3]
+    ## [1,] 1.58372960 0.95841259 0.05914083
+    ## [2,] 0.95841259 1.44000528 0.04676089
+    ## [3,] 0.05914083 0.04676089 0.09372410
 
 ``` r
 res_miss_random <- residuals(mod_miss_random, type = "response")
@@ -326,10 +327,10 @@ res_miss_random[is.na(as.matrix(data_missing[yvars]))] <- NA
 (V_miss_random_res <- cov(residuals(mod_miss_random, type = "response"), use = "pairwise.complete.obs")) # Same a V_miss_random
 ```
 
-    ##           [,1]      [,2]      [,3]
-    ## [1,] 0.9478232 1.8910425 0.2199679
-    ## [2,] 1.8910425 3.7984778 0.4345551
-    ## [3,] 0.2199679 0.4345551 3.8968594
+    ##           [,1]       [,2]       [,3]
+    ## [1,] 1.5398882 0.93077785 0.18555207
+    ## [2,] 0.9307779 1.42270697 0.07105762
+    ## [3,] 0.1855521 0.07105762 1.57737015
 
 These also turn out the same as the estimated value from the model. The
 random data approach underestimates variance/covariance less than the
@@ -343,43 +344,43 @@ correlation than the random data approach, and both are underestimates:
 cov2cor(V_true)
 ```
 
-    ##      [,1] [,2] [,3]
-    ## [1,]    1    2    2
-    ## [2,]    2    1    2
-    ## [3,]    2    2    1
+    ##           [,1]      [,2]      [,3]
+    ## [1,] 1.0000000 0.7119526 0.5809170
+    ## [2,] 0.7119526 1.0000000 0.6383799
+    ## [3,] 0.5809170 0.6383799 1.0000000
 
 ``` r
 cov2cor(V_full)
 ```
 
     ##           [,1]      [,2]      [,3]
-    ## [1,] 1.0000000 0.9966295 0.9947406
-    ## [2,] 0.9966295 1.0000000 0.9895776
-    ## [3,] 0.9947406 0.9895776 1.0000000
+    ## [1,] 1.0000000 0.6282979 0.5727993
+    ## [2,] 0.6282979 1.0000000 0.5993062
+    ## [3,] 0.5727993 0.5993062 1.0000000
 
 ``` r
 cov2cor(V_miss)
 ```
 
-    ##          [,1]      [,2]      [,3]
-    ## [1,] 1.000000 0.9966280 0.3106120
-    ## [2,] 0.996628 1.0000000 0.3095381
-    ## [3,] 0.310612 0.3095381 1.0000000
+    ##           [,1]      [,2]     [,3]
+    ## [1,] 1.0000000 0.6346437 0.153463
+    ## [2,] 0.6346437 1.0000000 0.127250
+    ## [3,] 0.1534630 0.1272500 1.000000
 
 ``` r
-cov2cor(V_miss_random)
+cov2cor(V_miss_random) # Way underestimates correlation
 ```
 
-    ##           [,1]      [,2]      [,3]
-    ## [1,] 1.0000000 0.9966274 0.1144549
-    ## [2,] 0.9966274 1.0000000 0.1129481
-    ## [3,] 0.1144549 0.1129481 1.0000000
+    ##           [,1]       [,2]       [,3]
+    ## [1,] 1.0000000 0.62884515 0.11903310
+    ## [2,] 0.6288452 1.00000000 0.04742414
+    ## [3,] 0.1190331 0.04742414 1.00000000
 
 Anectodotally, the general patterns above are consistent across
 different random seeds.
 
 Crap, am I going to have to fit all those latent random effects as in
 `?mgcv::missing.data`? That’s both ugly and computationally intense, as
-I’ll need to fit a random term for each output in each formula, and that
-will blow up in the real model that has both more outcomes and more
-parameters.
+I’ll need to fit a random effects term for each output in each formula
+each with all those effect levels, and that will blow up in the real
+model that has both more outcomes and more parameters.
